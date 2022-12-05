@@ -1,0 +1,231 @@
+---
+title: "Bellabeat: Google Data Analytics Capstone Project"
+author: "Abdul"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+## Introduction
+
+The goal of this project is to analyze smart device usage data in order to gain insight into how consumers use non-Bellabeat smart devices and how to apply these insights into Bellabeat's marketing strategy.
+
+## Ask
+
+The following questions are to be considered:
+
+* What are some trends in smart device usage?
+* How could these trends apply to Bellabeat customers?
+* How could these trends help influence Bellabeat marketing strategy?
+
+## Prepare
+
+* The datasets are available [here](https://www.kaggle.com/datasets/arashnic/fitbit).
+* The 31 days Time frame is limited to make any solid recommendation since there are seasons involved in a given month to consider someone's health well being.
+
+## Process
+
+R Studio is used for the data analysis.
+
+#### Loading installed packages for analysis
+
+```{r Load Libraries}
+library(tidyverse)
+library(lubridate)
+library(dplyr)
+library(readr)
+library(tidyr)
+library(ggplot2)
+library(ggpubr)
+```
+
+#### Importing and preparing datasets
+```{r Assign Variables}
+d_activities <- read.csv("C:/Users/Abdulkadir/Documents/HDD/Data Analysis/R_Case_studies/Bellabeat_data/dailyActivity_merged.csv")
+d_intensities <- read.csv("C:/Users/Abdulkadir/Documents/HDD/Data Analysis/R_Case_studies/Bellabeat_data/dailyintensities_merged.csv")
+h_calories <- read.csv("C:/Users/Abdulkadir/Documents/HDD/Data Analysis/R_Case_studies/Bellabeat_data/hourlyCalories_merged.csv")
+h_steps <- read.csv("C:/Users/Abdulkadir/Documents/HDD/Data Analysis/R_Case_studies/Bellabeat_data/hourlySteps_merged.csv")
+```
+
+#### Preview Dataset
+```{r Check Data}
+head(d_activities)
+head(d_intensities)
+tail(h_calories)
+tail(h_steps)
+```
+
+#### Data Cleaning
+```{r Check Data type}
+glimpse(d_activities)
+glimpse(d_intensities)
+glimpse(h_calories)
+glimpse(h_steps)
+```
+
+```{r Check Duplicates}
+sum(duplicated(d_activities))
+sum(duplicated(d_intensities))
+sum(duplicated(h_calories))
+sum(duplicated(h_steps))
+```
+
+```{r Check NA values}
+sum(is.na(d_activities))
+sum(is.na(d_intensities))
+sum(is.na(h_calories))
+sum(is.na(h_steps))
+```
+
+#### Data Formatting
+```{r Date Formatting}
+# activities table
+d_activities <- d_activities %>%
+  rename(date = ActivityDate) %>%
+  mutate(date = as_date(date, format = "%m/%d/%Y"))
+
+# intensities table
+d_intensities <- d_intensities %>%
+  rename(date = ActivityDay) %>%
+  mutate(date = as_date(date, format = "%m/%d/%Y"))
+
+# h_calories table
+h_calories<- h_calories %>% 
+  rename(date_time = ActivityHour) %>% 
+  mutate(date_time = as.POSIXct(date_time,format ="%m/%d/%Y %I:%M:%S %p" , tz=Sys.timezone()))
+
+# h_steps
+h_steps<- h_steps %>% 
+  rename(date_time = ActivityHour) %>% 
+  mutate(date_time = as.POSIXct(date_time,format ="%m/%d/%Y %I:%M:%S %p" , tz=Sys.timezone()))
+```
+
+#### Data Merging
+```{r}
+# Merge of activities with intensities
+d_merged <- merge(d_activities, d_intensities, by = c("Id", "date"))
+
+# Merge the calories_intensities with steps
+h_merged <- merge(h_calories, h_steps, by = c("Id", "date_time"))
+
+# Check the new table with head()
+head(d_merged)
+head(h_merged)
+```
+
+
+## Data Analysis
+
+#### Creating Chart Tables
+```{r New Tables}
+Daily_avg <- d_merged %>%
+    group_by(Id) %>%
+    summarise(avg_steps = mean(TotalSteps), avg_distance = mean(TotalDistance), avg_calories = mean(Calories))
+
+# Check the new table with head()
+head(Daily_avg)
+```
+
+```{r New columns}
+# Categorize user steps
+active_users <- Daily_avg %>%
+  mutate(active_users = case_when(
+    avg_steps < 5000 ~ "Inactive",
+    avg_steps >= 5000 & avg_steps <= 10000 ~ "Active",
+    avg_steps > 10000 ~ "Very Active"))
+
+# Check the new table with head()
+head(active_users)
+```
+
+```{r}
+# Table for bar charts
+weekday_d <- d_merged %>%
+  mutate(weekday = weekdays(date), TotalSteps, TotalDistance)
+
+weekday_d$weekday <- ordered(weekday_d$weekday, levels = c("Monday", "Tuesday", "Wednesday", "Thursday",
+  "Friday", "Saturday", "Sunday"))
+
+weekday_d <- weekday_d %>%
+  group_by(weekday) %>%
+  summarize (daily_steps = mean(TotalSteps), daily_calories = mean(Calories))
+
+# Check the new table with head()
+head(weekday_d)
+```
+
+```{r Percentage Tables}
+# Create a new percentage table from active_users
+users_perc <- active_users %>%
+    group_by(active_users) %>%
+    summarise(total = n()) %>%
+    mutate(totals = sum(total)) %>%
+    group_by(active_users) %>%
+    summarise(total_percent = total / totals) %>%
+    mutate(labels = scales::percent(total_percent))
+
+head(users_perc)
+```
+
+## Data Visualization
+
+```{r}
+# Percentage of Active Users
+users_perc %>%
+  ggplot(aes(x="",y=total_percent, fill=active_users)) +
+  geom_bar(stat = "identity", width = 1)+
+  coord_polar("y", start=0)+
+  theme_minimal()+
+  theme(axis.title.x= element_blank(),
+        axis.title.y = element_blank(),
+        panel.border = element_blank(), 
+        panel.grid = element_blank(), 
+        axis.ticks = element_blank(),
+        axis.text.x = element_blank(),
+        plot.title = element_text(hjust = 0.5, size=14, face = "bold")) +
+  scale_fill_manual(values = c("#85e085","#ffd480", "#ff8080", "#e6e600")) +
+  geom_text(aes(label = labels),
+            position = position_stack(vjust = 0.5))+
+  labs(title="User's Active Based on Steps")
+```
+
+```{r}
+# Steps vs Calories
+d_merged %>% 
+  group_by(TotalSteps, Calories) %>% 
+  ggplot(aes(x = TotalSteps, y = Calories, color = Calories)) +
+  geom_point() +
+  geom_smooth(color = "blue") + 
+  theme(legend.position = c(.8, .3),
+        legend.spacing.y = unit(2, "mm"), 
+        panel.border = element_rect(colour = "black", fill=NA),
+        legend.background = element_blank(),
+        legend.box.background = element_rect(colour = "black")) +
+  labs(title = 'Calories vs. Total Steps',
+       y = 'Calories',
+       x = 'Total Steps',
+       caption = 'Data Source: FitBit Fitness Tracker Data')
+```
+
+
+```{r}
+# Bar chart for Steps
+ggplot(weekday_d, aes(weekday, daily_steps)) +
+      geom_col(fill = "#006699") +
+      labs(title = "Daily Steps per Weekday", x= "", y = "")
+```
+
+
+## Key Findings
+
+With the data cleaned and analyzed, it has provided valuable insights for Bellabeat's marketing strategy team.
+
+* The majority of the users are moderately active and the next majority of the users are inactive (under 5,000 steps per day).
+* 54% of the users didn't has insufficient amount of sleep and 42% has good sleep. It's fairly equal.
+* There is a fair amount of positive correlation between steps and calories burnt per day.
+* There is no correlation between the amount of steps and amount of sleep.
+* Users are mostly active on Saturday, least active during Sundays, and follows up to a near-equal amount of activities on Monday and Tuesday.
+* Users, on average did not get enough sleep every day. The most amount of sleep they get is only on Sunday.
+
+## Recommendations
+
+Keeping in mind, Bellabeat is a high-tech manufacturer of health-focused products for women and the main goal of this project is to gain insight into how consumers use non-Bellabeat smart devices and provide high-level recommendations for how these trends can inform Bellabeat's marketing strategy.
